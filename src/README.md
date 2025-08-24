@@ -1,39 +1,48 @@
-# Zig Git Clone Dynamic Library
+# Zig Git Repository Downloader
 
-A small Zig dynamic library providing C-compatible functions for cloning Git repositories.  
-It supports full repository cloning as well as cloning specific branches (e.g., `dev`) with user-provided inputs.
+A lightweight Zig library for downloading Git repository archives (tarballs) from GitHub. It provides functions to clone the `main` or `dev` branch of a repository to a local destination path. Written in Zig 0.14.x with C-callable exports for easy integration.
+
+---
+
+## Table of Contents
+
+* [Features](#features)
+* [Installation](#installation)
+* [Usage](#usage)
+* [API Reference](#api-reference)
+* [Error Handling](#error-handling)
+* [Implementation Details](#implementation-details)
+* [License](/LICENCE)
 
 ---
 
 ## Features
 
-- Clone a Git repository to a specified local path.
-- Clone a specific branch (`dev`) from a repository.
-- C-compatible interface for integration with other languages.
-- Returns standardized error codes for easy error handling.
+* Initialize with user-specified repository URL and destination path.
+* Clone `main` or `dev` branch of a GitHub repository.
+* Pure Zig implementation, no external dependencies.
+* C-callable interface for interoperability with other languages.
+* Handles network and file write errors gracefully.
 
 ---
 
-## Error Codes
+## Installation
 
-All functions return a `u32` representing a `ProjectError_t`:
+Clone this repository and build with Zig:
 
-| Code | Meaning |
-|------|---------|
-| 0    | `Success` - Operation completed successfully |
-| 1    | `zeroLength` - Input length was zero |
-| 2    | `IndexOutOfBounds` - Index exceeded valid bounds |
-| 3    | `InvalidUrl` - URL provided was invalid or malformed |
-| 4    | `LengthTooShort` - Input string length was too short |
-| 5    | `InvalidDestination` - Destination path invalid or inaccessible |
+```bash
+git clone https://github.com/yourusername/zig-git-downloader.git
+cd zig-git-downloader
+zig build-lib src/main.zig -dynamic -OReleaseSafe -target x86_64-linux
+```
+
+This will generate a shared library (`.so`/`.dll`) depending on your platform.
 
 ---
 
-## Data Structures
+## Usage
 
-### `UserInputStruct_t`
-
-Represents user input from external code:
+### Initialize with user input
 
 ```zig
 const UserInputStruct_t = extern struct {
@@ -42,84 +51,97 @@ const UserInputStruct_t = extern struct {
     CloneDestinationPath: [*]const u8,
     CloneDestinationPathLen: u8,
 };
-````
 
-### `PathLinkStruct_t`
-
-Internal struct used to hold paths and links:
-
-```zig
-const PathLinkStruct_t = struct {
-    GitPath: []const u8,        // Path to Git executable
-    UrlLink: []const u8,        // Repository URL
-    DestinationPath: []const u8 // Local clone destination
+var input = UserInputStruct_t{
+    .GitRepoUrl = "https://github.com/username/repo",
+    .GitRepoUrlLen = 29,
+    .CloneDestinationPath = "./local_repo",
+    .CloneDestinationPathLen = 11,
 };
-```
 
----
-
-## Functions
-
-### `init`
-
-Initializes repository URL and destination path.
-
-```zig
-pub fn init(UsrInput: UserInputStruct_t) callconv(.C) u32
-```
-
-* Validates the lengths of input strings.
-* Returns `ProjectError_t.Success` on success or `LengthTooShort` if inputs are too short.
-
----
-
-### `CloneRepo`
-
-Clones the full Git repository.
-
-```zig
-pub fn CloneRepo() callconv(.C) u32
-```
-
-* Uses the initialized URL and destination path.
-* Returns `ProjectError_t.Success` on success.
-
----
-
-### `CloneDevRepo`
-
-Clones the `dev` branch of the repository.
-
-```zig
-pub fn CloneDevRepo() callconv(.C) u32
-```
-
-* Uses the initialized URL and destination path.
-* Returns `ProjectError_t.Success` on success.
-
----
-
-## Example Usage (C)
-
-```c
-#include "zig_git_clone.h"
-
-int main() {
-    UserInputStruct_t input = {
-        .GitRepoUrl = "https://github.com/YadukrishnanKM/Rohini_RTOS-RP2040.git",
-        .GitRepoUrlLen = 54,
-        .CloneDestinationPath = "/tmp/clone_dir",
-        .CloneDestinationPathLen = 14
-    };
-
-    if (init(input) != 0) return -1;
-
-    if (CloneRepo() != 0) return -1;
-
-    return 0;
+const result = init(input);
+if (result != @intFromEnum(ProjectError_t.Success)) {
+    // Handle initialization error
 }
 ```
 
+### Clone repository
+
+```zig
+const clone_result = CloneRepo(); // Clones main branch
+const clone_dev_result = CloneDevRepo(); // Clones dev branch
+```
+
 ---
 
+## API Reference
+
+### `init(UsrInput: UserInputStruct_t) u32`
+
+Initializes the global `PathAndLink` struct with user-provided Git URL and destination path.
+
+* **Parameters**:
+
+  * `UsrInput`: User input struct containing URL and destination path.
+* **Returns**:
+
+  * `ProjectError_t.Success` on success.
+  * `ProjectError_t.LengthTooShort` if URL or path is too short.
+
+---
+
+### `CloneRepo() u32`
+
+Downloads the `main` branch tarball of the initialized repository to the destination path.
+
+* **Returns**:
+
+  * `ProjectError_t.Success` on success.
+  * `ProjectError_t.InvalidUrl` if the URL is invalid.
+  * `ProjectError_t.NetworkError` if the network request fails.
+  * `ProjectError_t.FileWriteError` if writing to file fails.
+
+---
+
+### `CloneDevRepo() u32`
+
+Downloads the `dev` branch tarball of the initialized repository to the destination path.
+
+* **Returns**: Same as `CloneRepo`.
+
+---
+
+## Error Handling
+
+The library uses `ProjectError_t` for standardized error codes:
+
+| Error                | Description                        |
+| -------------------- | ---------------------------------- |
+| `Success`            | Operation succeeded                |
+| `zeroLength`         | Received an empty string           |
+| `IndexOutOfBounds`   | Array or slice index out of bounds |
+| `InvalidUrl`         | URL is invalid                     |
+| `LengthTooShort`     | URL or path length below minimum   |
+| `InvalidDestination` | Destination path invalid           |
+| `NetworkError`       | HTTP request failed                |
+| `FileWriteError`     | Failed to write file               |
+
+---
+
+## Implementation Details
+
+* Uses Zig's `std.http.Client` and `std.Uri` to download repository tarballs.
+* Writes HTTP response directly to a local file.
+* Handles mutable buffers using slices (`[]u8`) for `server_header_buffer` and temporary allocations.
+* C-callable functions (`pub export`) allow integration with C, C++, or other FFI-capable languages.
+
+---
+
+## License
+
+GPL 3.0 License – see [LICENSE](/LICENCE) for details.
+
+---
+
+This README covers usage, API, error handling, and implementation notes, making it suitable for documentation or GitHub repository display.
 

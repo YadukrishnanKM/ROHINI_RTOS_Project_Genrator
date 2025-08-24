@@ -17,10 +17,6 @@ pub fn LinnuxAarch64 (b: *std.Build) void {
         }),
     });
 
-    _ = @export(&mn.init, .{ .name = "init", .linkage = .strong });
-    _ = @export(&mn.CloneRepo, .{ .name = "CloneRepo", .linkage = .strong });
-    _ = @export(&mn.CloneDevRepo, .{ .name = "CloneDevRepo", .linkage = .strong });
-
     b.installArtifact(libfizzbuzz);
 }
 
@@ -39,10 +35,6 @@ pub fn Linnux_X86_64 (b:*std.Build) void {
             .optimize = optimize,
         }),
     });
-
-    _ = @export(&mn.init, .{ .name = "init", .linkage = .strong });
-    _ = @export(&mn.CloneRepo, .{ .name = "CloneRepo", .linkage = .strong });
-    _ = @export(&mn.CloneDevRepo, .{ .name = "CloneDevRepo", .linkage = .strong });
 
     b.installArtifact(libfizzbuzz);
 }
@@ -63,10 +55,6 @@ pub fn Windows_X86_64 (b:*std.Build) void {
         }),
     });
 
-    _ = @export(&mn.init, .{ .name = "init", .linkage = .strong });
-    _ = @export(&mn.CloneRepo, .{ .name = "CloneRepo", .linkage = .strong });
-    _ = @export(&mn.CloneDevRepo, .{ .name = "CloneDevRepo", .linkage = .strong });
-
     b.installArtifact(libfizzbuzz);
 }
 
@@ -85,10 +73,6 @@ pub fn WindowsAarch64 (b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-
-    _ = @export(&mn.init, .{ .name = "init", .linkage = .strong });
-    _ = @export(&mn.CloneRepo, .{ .name = "CloneRepo", .linkage = .strong });
-    _ = @export(&mn.CloneDevRepo, .{ .name = "CloneDevRepo", .linkage = .strong });
 
     b.installArtifact(libfizzbuzz);
 }
