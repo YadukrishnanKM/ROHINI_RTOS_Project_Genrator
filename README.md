@@ -204,7 +204,7 @@ int main() {
 
 ## License
 
-GPL 3.0
+GPL 3.0 [LICENCE](/LICENCE)
 
 ---
 
