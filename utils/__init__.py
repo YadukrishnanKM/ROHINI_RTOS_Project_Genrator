@@ -1,0 +1,1 @@
+print("initialized __init.py__")
