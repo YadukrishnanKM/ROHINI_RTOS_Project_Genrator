@@ -1,147 +1,94 @@
-# Zig Git Repository Downloader
+# Zig RPG  Dynamic library Version 2.0.0
 
-A lightweight Zig library for downloading Git repository archives (tarballs) from GitHub. It provides functions to clone the `main` or `dev` branch of a repository to a local destination path. Written in Zig 0.14.x with C-callable exports for easy integration.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENCE)
 
----
-
-## Table of Contents
-
-* [Features](#features)
-* [Installation](#installation)
-* [Usage](#usage)
-* [API Reference](#api-reference)
-* [Error Handling](#error-handling)
-* [Implementation Details](#implementation-details)
-* [License](/LICENCE)
-
----
+A lightweight Zig library to perform Git repository operations, directory management, URL validation, and TCP server logging.
 
 ## Features
 
-* Initialize with user-specified repository URL and destination path.
-* Clone `main` or `dev` branch of a GitHub repository.
-* Pure Zig implementation, no external dependencies.
-* C-callable interface for interoperability with other languages.
-* Handles network and file write errors gracefully.
-
----
-
-## Installation
-
-Clone this repository and build with Zig:
-
-```bash
-git clone https://github.com/yourusername/zig-git-downloader.git
-cd zig-git-downloader
-zig build-lib src/main.zig -dynamic -OReleaseSafe -target x86_64-linux
-```
-
-This will generate a shared library (`.so`/`.dll`) depending on your platform.
-
----
+* Initialize repository paths and destination directories.
+* Validate Git repository URLs.
+* Check connectivity to `github.com`.
+* Check if directories exist and create them if needed.
+* Start a simple TCP log server on localhost.
+* Stream logs to TCP connections.
+* Handles common project errors with `ProjectError_t`.
 
 ## Usage
 
-### Initialize with user input
+### Initialize Paths
 
 ```zig
-const UserInputStruct_t = extern struct {
-    GitRepoUrl: [*]const u8,
-    GitRepoUrlLen: u32,
-    CloneDestinationPath: [*]const u8,
-    CloneDestinationPathLen: u8,
-};
-
-var input = UserInputStruct_t{
-    .GitRepoUrl = "https://github.com/username/repo",
+var userInput = UserInputStruct_t{
+    .GitRepoUrl = "https://github.com/user/repo.git",
     .GitRepoUrlLen = 29,
-    .CloneDestinationPath = "./local_repo",
-    .CloneDestinationPathLen = 11,
+    .CloneDestinationPath = "/tmp/repo",
+    .CloneDestinationPathLen = 9,
 };
 
-const result = init(input);
+const result = gitutil.init(userInput);
 if (result != @intFromEnum(ProjectError_t.Success)) {
-    // Handle initialization error
+    std.debug.print("Initialization failed: {}\n", .{result});
 }
 ```
 
-### Clone repository
+### Check Connection
 
 ```zig
-const clone_result = CloneRepo(); // Clones main branch
-const clone_dev_result = CloneDevRepo(); // Clones dev branch
+const connResult = gitutil.CheckConnection();
+if (connResult == @intFromEnum(ProjectError_t.Success)) {
+    std.debug.print("Connection to GitHub successful!\n", .{});
+}
 ```
 
----
+### Validate URL
 
-## API Reference
+```zig
+const repoUrl = RepoUrlCheckStruct_t{
+    .Url = "https://github.com/user/repo.git",
+    .length = 29,
+};
+const validateResult = gitutil.ValidateURL(repoUrl);
+```
 
-### `init(UsrInput: UserInputStruct_t) u32`
+### Directory Operations
 
-Initializes the global `PathAndLink` struct with user-provided Git URL and destination path.
+```zig
+const path = PathDirStruct_t{ .Path = "/tmp/testdir", .length = 12 };
+const existsResult = gitutil.DirExists(path);
+if (existsResult != @intFromEnum(ProjectError_t.Success)) {
+    gitutil.MakeDir(path);
+}
+```
 
-* **Parameters**:
+### Start Log Server
 
-  * `UsrInput`: User input struct containing URL and destination path.
-* **Returns**:
-
-  * `ProjectError_t.Success` on success.
-  * `ProjectError_t.LengthTooShort` if URL or path is too short.
-
----
-
-### `CloneRepo() u32`
-
-Downloads the `main` branch tarball of the initialized repository to the destination path.
-
-* **Returns**:
-
-  * `ProjectError_t.Success` on success.
-  * `ProjectError_t.InvalidUrl` if the URL is invalid.
-  * `ProjectError_t.NetworkError` if the network request fails.
-  * `ProjectError_t.FileWriteError` if writing to file fails.
-
----
-
-### `CloneDevRepo() u32`
-
-Downloads the `dev` branch tarball of the initialized repository to the destination path.
-
-* **Returns**: Same as `CloneRepo`.
-
----
+```zig
+const server = gitutil.InitLogServer(8080);
+if (server.err_val == @intFromEnum(ProjectError_t.Success)) {
+    std.debug.print("Server started on port {}\n", .{server.port});
+}
+```
 
 ## Error Handling
 
-The library uses `ProjectError_t` for standardized error codes:
+The library uses the `ProjectError_t` enum for all return codes:
 
-| Error                | Description                        |
-| -------------------- | ---------------------------------- |
-| `Success`            | Operation succeeded                |
-| `zeroLength`         | Received an empty string           |
-| `IndexOutOfBounds`   | Array or slice index out of bounds |
-| `InvalidUrl`         | URL is invalid                     |
-| `LengthTooShort`     | URL or path length below minimum   |
-| `InvalidDestination` | Destination path invalid           |
-| `NetworkError`       | HTTP request failed                |
-| `FileWriteError`     | Failed to write file               |
-
----
-
-## Implementation Details
-
-* Uses Zig's `std.http.Client` and `std.Uri` to download repository tarballs.
-* Writes HTTP response directly to a local file.
-* Handles mutable buffers using slices (`[]u8`) for `server_header_buffer` and temporary allocations.
-* C-callable functions (`pub export`) allow integration with C, C++, or other FFI-capable languages.
-
----
+| Error                | Meaning                          |
+| -------------------- | -------------------------------- |
+| `Success`            | Operation completed successfully |
+| `zeroLength`         | Input has zero length            |
+| `IndexOutOfBounds`   | Index out of bounds              |
+| `InvalidUrl`         | URL is invalid                   |
+| `LengthTooShort`     | Input length too short           |
+| `InvalidDestination` | Invalid destination path         |
+| `FileWriteError`     | Failed to write file             |
+| `PortError`          | Generic port error               |
+| `PortUnavilable`     | Port not available               |
+| `IterationTimeOut`   | Port search timed out            |
 
 ## License
 
-GPL 3.0 License – see [LICENSE](/LICENCE) for details.
+This library is licensed under [GPL-3.0 License](/LICENCE).
 
----
-
-This README covers usage, API, error handling, and implementation notes, making it suitable for documentation or GitHub repository display.
-
+--

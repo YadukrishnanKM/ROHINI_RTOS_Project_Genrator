@@ -7,6 +7,7 @@
     },
    
     "zig.zls.enabled": "on",
+    "zig.zls.path": "/usr/local/bin/zls",
     "[zig]": {
         "editor.formatOnSave": false,
         "editor.defaultFormatter": "ziglang.vscode-zig",
