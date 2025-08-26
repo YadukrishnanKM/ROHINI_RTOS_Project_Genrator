@@ -1,11 +1,21 @@
 import ctypes
 import os
+import socket
 
-# Path to the compiled Zig shared library
-LIB_PATH = "./lib/libproj_gen_linux_x86_64.so" 
 
-# Define the structure equivalent to Zig's UserInputStruct_t
-class UserInputStruct_t(ctypes.Structure):
+#"./lib/libproj_gen_linux_x86_64.so"
+
+if os.name == "nt":
+    libname = "./lib/libproj_gen_linux_x86_64.so"
+else:
+    libname = "./lib/libproj_gen_linux_x86_64.so"
+
+rpg_lib = ctypes.CDLL(libname)
+
+# ------------------------------
+# Structures
+# ------------------------------
+class UserInputStruct(ctypes.Structure):
     _fields_ = [
         ("GitRepoUrl", ctypes.c_char_p),
         ("GitRepoUrlLen", ctypes.c_uint32),
@@ -13,70 +23,65 @@ class UserInputStruct_t(ctypes.Structure):
         ("CloneDestinationPathLen", ctypes.c_uint8),
     ]
 
-# The high-level abstraction class
-class ZigProjectGenerator:
-    """
-    A high-level abstraction for the Zig shared library.
-    Encapsulates all ctypes interactions.
-    """
-    def __init__(self):
-        # Check if the library file exists before loading
-        if not os.path.exists(LIB_PATH):
-            raise FileNotFoundError(f"Shared library not found at: {LIB_PATH}")
+class RepoUrlCheckStruct(ctypes.Structure):
+    _fields_ = [
+        ("Url", ctypes.c_char_p),
+        ("length", ctypes.c_uint32),
+    ]
 
-        # Load the shared library
-        self._lib = ctypes.CDLL(LIB_PATH)
-        self._define_function_prototypes()
+class PathDirStruct(ctypes.Structure):
+    _fields_ = [
+        ("Path", ctypes.c_char_p),
+        ("length", ctypes.c_uint32),
+    ]
 
-    def _define_function_prototypes(self):
-        """
-        Defines the argument and return types for the C functions.
-        This provides better type safety.
-        """
-        self._lib.init.argtypes = [UserInputStruct_t]
-        self._lib.init.restype = ctypes.c_uint32
+class ServerStruct(ctypes.Structure):
+    _fields_ = [
+        ("server", ctypes.c_void_p),
+        ("port", ctypes.c_uint32),
+        ("err_val", ctypes.c_uint32),
+    ]
 
-        self._lib.InitLogServer.argtypes = [ctypes.c_uint32]
-        self._lib.InitLogServer.restype = ctypes.c_uint32
+# ------------------------------
+# Function bindings
+# ------------------------------
+init = rpg_lib.init
+init.argtypes = [UserInputStruct]
+init.restype = ctypes.c_uint32
 
-        # FIX: Correctly specify a function with no arguments using an empty list
-        self._lib.CheckConnection.argtypes = []
-        self._lib.CheckConnection.restype = ctypes.c_uint32
+CheckConnection = rpg_lib.CheckConnection
+CheckConnection.argtypes = []
+CheckConnection.restype = ctypes.c_uint32
 
-        self._lib.ValidateURL.argtypes = []
-        self._lib.ValidateURL.restype = ctypes.c_uint32
+ValidateURL = rpg_lib.ValidateURL
+ValidateURL.argtypes = [RepoUrlCheckStruct]
+ValidateURL.restype = ctypes.c_uint32
 
-        self._lib.startServer.argtypes = [ctypes.c_uint32]
-        self._lib.startServer.restype = ctypes.c_uint32
-    
-    def init(self, git_repo_url: str, clone_destination_path: str) -> int:
-        """Initializes the project generator with URL and path."""
-        git_url_bytes = git_repo_url.encode('utf-8')
-        clone_path_bytes = clone_destination_path.encode('utf-8')
-        
-        user_input = UserInputStruct_t(
-            GitRepoUrl=git_url_bytes,
-            GitRepoUrlLen=len(git_url_bytes),
-            CloneDestinationPath=clone_path_bytes,
-            CloneDestinationPathLen=len(clone_path_bytes)
-        )
-        return self._lib.init(user_input)
+DirExists = rpg_lib.DirExists
+DirExists.argtypes = [PathDirStruct]
+DirExists.restype = ctypes.c_uint32
 
-    def init_log_server(self, port: int) -> int:
-        """Initializes the log server on the specified port."""
-        return self._lib.InitLogServer(port)
+MakeDir = rpg_lib.MakeDir
+MakeDir.argtypes = [PathDirStruct]
+MakeDir.restype = ctypes.c_uint32
 
-    def check_connection(self) -> int:
-        """Checks the network connection."""
-        return self._lib.CheckConnection()
+InitLogServer = rpg_lib.InitLogServer
+InitLogServer.argtypes = [ctypes.c_uint16]
+InitLogServer.restype = ServerStruct
 
-    def validate_url(self) -> int:
-        """Validates the Git repository URL."""
-        return self._lib.ValidateURL()
+# ------------------------------
+# Additional Python helpers
+# ------------------------------
 
-    def start_server(self, port: int) -> int:
-        """Starts a TCP server and returns its socket file descriptor."""
-        return self._lib.startServer(port)
+def check_server(host="127.0.0.1", port=8080, timeout=2):
+    """Attempt TCP connection to check if server is running."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (ConnectionRefusedError, socket.timeout):
+        return False
 
-# Create a single instance of the class for other modules to import
-client = ZigProjectGenerator()
+def stream_log_example(server_struct, message: str):
+    """Send log message to the server (example, requires StreamLog support)."""
+    # Currently a placeholder, since StreamLog is not exposed via FFI.
+    print(f"[LOG] Would send to server port {server_struct.port}: {message}")

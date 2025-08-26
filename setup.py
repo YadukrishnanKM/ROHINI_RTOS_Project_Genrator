@@ -14,7 +14,7 @@ if not os.path.exists(LIB_PATH):
 
 setup(
     name="zig_proj_gen",
-    version="0.1.0",
+    version="0.2.4",
     description="Python ABI bindings for Zig Project Generator",
     author="Yadukrishnan K M",
     packages=find_packages(where="."),
