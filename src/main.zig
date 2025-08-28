@@ -12,6 +12,8 @@ const ProjectError_t = enum {
     PortError,
     PortUnavilable,
     IterationTimeOut,
+    InvalidUrlFormat,
+    DnsResolutionFailed,
 };
 
 const PathLinkStruct_t = struct {
@@ -43,6 +45,12 @@ const Server_t = extern struct {
     port: u32,
     err_val: u32,
 };
+
+const LogError_t = extern struct {
+    err: [*]const u8,
+    length: u32,
+};
+
 //--------------------------------------------------------------------------------------//
 
 var PathAndLink = PathLinkStruct_t{
@@ -73,22 +81,23 @@ pub export fn init(UsrInput: UserInputStruct_t) callconv(.C) u32 {
 
 
 pub export fn CheckConnection() callconv(.c) u32 {
-    // Try to resolve github.com:443
-    const address = net.Address.resolveIp("github.com", 443)
-        catch |err| {
-            std.debug.print("address error: {s}\n", .{@errorName(err)});
-            return @intFromError(err);
-        };
 
-    
-    const socket = net.tcpConnectToAddress(address)
-        catch |err| {
-            std.debug.print("CheckConnection socket error: {s}\n", .{@errorName(err)});
-            return @intFromError(err);
-        };
+    // GitHub's public IPv4 address (one of them: 140.82.121.3)
+    const github_ip =  std.net.Address.parseIp4("140.82.121.3", 443) catch |err| {
+        std.debug.print("\nCheck connection pharse error : {s}", .{@errorName(err)});
+        return @intFromError(err);
+    };
+
+    var socket = std.net.tcpConnectToAddress(github_ip) catch |err| {
+        std.debug.print("\nCheck socket error : {s}", .{@errorName(err)});
+        return @intFromError(err);
+    };
+
     defer socket.close();
 
+    // If we reach here, connection is successful
     return @intFromEnum(ProjectError_t.Success);
+    
 }
 
 //--------------------------------------------------------------------------------------//
@@ -185,6 +194,8 @@ pub export fn InitLogServer(start_port: u16) callconv(.C) Server_t {
 }
 
 //--------------------------------------------------------------------------------------//
+//                            Debug Server Private functions                            //
+//--------------------------------------------------------------------------------------//
 
 fn StreamLog(conn: *std.net.Server.Connection, msg: []const u8) !void {
     try conn.stream.writeAll(msg);
@@ -222,17 +233,143 @@ fn CheckPort(port: u32) u32 {
     return @intFromEnum(ProjectError_t.IterationTimeOut);
 }
 
+//--------------------------------------------------------------------------------------//
+
+fn ResolveIPAddress(allocator: std.mem.Allocator, host: []const u8, port_in: u32) std.net.GetAddressListError![]std.net.Address {
+
+    const port = @as(u16, @intCast(port_in));
+
+    var Addresses =  std.net.getAddressList(allocator, host, port) 
+    catch |err|{
+            std.debug.print("ResolveIPAddress get address list  error {s}", .{@errorName(err)});
+            return err;
+    };
+    defer Addresses.deinit();
+
+   return Addresses.*.addrs;
+
+}
+
+//--------------------------------------------------------------------------------------//
+
+fn PharseURL(url: []const u8) []const u8{
+
+    const scheme_end_index = std.mem.indexOf(u8, url, "://") orelse {
+        std.debug.print("\nParsing error: '://' not found in URL.\n", .{});
+    };
+    const host_start_index = scheme_end_index + 3; // Length of "://"
+
+    // Find the end of the host, which is the next '/' or end of string
+    const host_end_index = std.mem.indexOf(u8, url[host_start_index..(url.len-1)], "/") orelse url.len;
+    
+    return url[host_start_index..host_end_index];
+}
+
 
 //--------------------------------------------------------------------------------------//
 //                                  Write logs in file                                  //
 //--------------------------------------------------------------------------------------//
 
+pub export fn createCsvFile(path_t: PathDirStruct_t) callconv(.C) u32 {
 
+    const path = path_t.Path[0..path_t.length-1];
+
+    if (fileExists(path)) {
+        std.debug.print("\nFile already exists: {s}\n", .{path});
+        return @intFromEnum(ProjectError_t.FileWriteError);
+    }
+
+    var cwd = std.fs.cwd();
+    var file = cwd.createFile(path, .{ .read = true, .truncate = false, .exclusive = true }) catch |err| {
+        std.debug.print("\nCreate csv file error : {s}", .{@errorName(err)});
+        return @intFromError(err);
+    };
+    defer file.close();
+
+    // Write header line to CSV
+    file.writeAll("timestamp,error\n") catch |err|{
+        std.debug.print("\nCreateCSV writeall error : {s}", .{@errorName(err)});
+        return @intFromError(err);
+    };
+
+    std.debug.print("\nCSV file created: {s}\n", .{path});
+
+    return @intFromEnum(ProjectError_t.Success);
+}
+
+//--------------------------------------------------------------------------------------//
+
+pub export fn logErrorToCsv(file_path_t: PathDirStruct_t, error_name_t: LogError_t) callconv(.C) bool {
+    const file_path = file_path_t.Path[0..file_path_t.length-1];
+    const error_name = error_name_t.err[0..error_name_t.length-1];
+
+    // Get current time from OS
+    const now = std.time.Instant.now() catch |err| {
+        std.debug.print("logErrorToCsv: failed to get time: {s}\n", .{@errorName(err)});
+        return false;
+    };
+    const timestamp: i64 = now.timestamp.sec; // Unix timestamp in seconds
+
+    var cwd = std.fs.cwd();
+    var file: std.fs.File = undefined;
+
+    var file_con:bool = true;
+
+    // Check if file exists
+    cwd.access(file_path, .{}) catch |err| {
+        if (std.mem.eql(u8, @errorName(err),"FileNotFound")) file_con = false;
+    };
+
+    if (file_con) {
+        // Open file for append
+        file = cwd.openFile(file_path, .{ .mode = .write_only }) catch |err| {
+            std.debug.print("logErrorToCsv: openFile error {s}\n", .{@errorName(err)});
+            return false;
+        };
+    } else {
+        // Create new file with header
+        file = cwd.createFile(file_path, .{}) catch |err| {
+            std.debug.print("logErrorToCsv: createFile error {s}\n", .{@errorName(err)});
+            return false;
+        };
+        defer file.close();
+
+        file.writeAll("timestamp,error\n") catch |err| {
+            std.debug.print("logErrorToCsv: write all error {s}\n", .{@errorName(err)});
+            return false;
+        };
+
+        // Reopen in append mode
+        file = cwd.openFile(file_path, .{ .mode = .write_only }) catch |err| {
+            std.debug.print("logErrorToCsv: reopen error {s}\n", .{@errorName(err)});
+            return false;
+        };
+    }
+    defer file.close();
+
+    // Write timestamp and error name
+    file.writer().print("{d},{s}\n", .{ timestamp, error_name }) catch |err| {
+            std.debug.print("logErrorToCsv: writter error {s}\n", .{@errorName(err)});
+            return false;
+        };
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------------//
+//                                  File Private functions                              //
+//--------------------------------------------------------------------------------------//
+
+pub fn fileExists(path: []const u8) bool {
+    var cwd = std.fs.cwd();
+    cwd.access(path, .{.mode = .read_only}) catch |err| {
+        std.debug.print("fileExists acess error : {s}", .{@errorName(err)});
+        return false;
+    };
+    return true;
+}
 
 //--------------------------------------------------------------------------------------//
 
 //--------------------------------------------------------------------------------------//
 
-//--------------------------------------------------------------------------------------//
-
-//--------------------------------------------------------------------------------------//
