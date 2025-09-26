@@ -1,0 +1,20 @@
+{
+    
+    "workbench.iconTheme": "vscode-icons",
+    
+    "[javascript]": {
+        "editor.defaultFormatter": "vscode.typescript-language-features"
+    },
+   
+    "zig.zls.enabled": "on",
+    "zig.zls.path": "/usr/local/bin/zls",
+    "[zig]": {
+        "editor.formatOnSave": false,
+        "editor.defaultFormatter": "ziglang.vscode-zig",
+        "editor.stickyScroll.defaultModel": "foldingProviderModel",
+        "files.eol": "\n"
+    },
+    "zig.buildOnSave": false,
+    "zig.zls.additionalOptions": {
+    }
+}
