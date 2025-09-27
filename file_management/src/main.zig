@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const print = std.debug.print;
 const file = std.fs;
 
@@ -13,7 +14,7 @@ const file = std.fs;
 
 /// This module provides functions to create, check existence, append to, and empty files.
 const FileError = enum {  Sucess, 
-                                UnableToOpen, 
+                                UnableToOpen,  
                                 EmptyFile, 
                                 CreateFileError, 
                                 FileNotExist 
@@ -25,10 +26,10 @@ const FileError = enum {  Sucess,
 /// ## Fields
 /// - `Path`: A pointer to a null-terminated string representing the file path.
 /// - `PathLenght`: A 16-bit unsigned integer representing the length of the file path string.
-const FileData = extern struct {  
+const FileData = extern struct { 
                                         Path: [*]const u8, 
                                         PathLenght: u16 
-                                        };
+                                    };
 
 /// Struct to hold data to be written to a file
 /// This struct is used to pass data to be appended to a file.
@@ -39,7 +40,7 @@ const FileData = extern struct {
 const Data = extern struct { 
                                     data: [*]const u8, 
                                     DataLenght: u16 
-                                    };
+                                };
 
 /// Creates a file at the specified path.
 /// Returns a status code indicating success or failure.
@@ -50,8 +51,8 @@ const Data = extern struct {
 pub export fn CreateFile(Fd: FileData) callconv(.C) u32 {
     const FilePath = Fd.Path[0 .. Fd.PathLenght - 1];
 
-    const File = file.createFileAbsolute(FilePath, .{ .mode = .EmptyFile }) catch |err| {
-        _ = err;
+    const File = file.createFileAbsolute(FilePath, .{ .truncate = true }) catch |err| {
+        _ = @intFromError(err);
         return @intFromEnum(FileError.CreateFileError);
     };
 
@@ -69,7 +70,7 @@ pub export fn CheckFileExists(Fd: FileData) callconv(.C) u32 {
     const FilePath = Fd.Path[0 .. Fd.PathLenght - 1];
 
     const File = file.openFileAbsolute(FilePath, .{ .mode = .read_only }) catch |err| {
-        _ = err;
+        _ = @intFromError(err);
         return @intFromEnum(FileError.FileNotExist);
     };
     defer File.close();
@@ -87,13 +88,13 @@ pub export fn AppendToFile(Fd: FileData, data: Data) callconv(.C) u32 {
     const FilePath = Fd.Path[0 .. Fd.PathLenght - 1];
 
     const File = file.openFileAbsolute(FilePath, .{ .mode = .write_only }) catch |err| {
-        _ = err;
+        _ = @intFromError(err);
         return @intFromEnum(FileError.FileNotExist);
     };
     defer File.close();
 
     File.writer().writeAll(data.data[0 .. data.DataLenght - 1]) catch |err| {
-        _ = err;
+        _ = @intFromError(err);
         return @intFromEnum(FileError.UnableToOpen);
     };
 
@@ -110,15 +111,25 @@ pub export fn EmptyFile(Fd: FileData) callconv(.C) u32 {
     const FilePath = Fd.Path[0 .. Fd.PathLenght - 1];
 
     const File = file.openFileAbsolute(FilePath, .{ .mode = .write_only }) catch |err| {
-        _ = err;
+        _ = @intFromError(err);
         return @intFromEnum(FileError.FileNotExist);
     };
     defer File.close();
 
-    File.writer().truncate(0) catch |err| {
-        _ = err;
+    // Set the file size to 0 to empty it
+    File.setEndPos(0) catch |err| {
+        _ = @intFromError(err);
         return @intFromEnum(FileError.UnableToOpen);
     };
 
     return @intFromEnum(FileError.Sucess);
+}
+
+pub export fn GetOS() callconv(.C) u32 {
+    return switch (builtin.os.tag) {
+        .windows => 1,
+        .linux => 2,
+        .macos => 3,
+        else => 4,
+    };
 }

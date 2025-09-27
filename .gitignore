@@ -1,1 +1,2 @@
-*.zig linguist-language=Zig
+*.zig-cache
+*.zig-out
